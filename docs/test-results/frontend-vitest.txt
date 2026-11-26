@@ -1,0 +1,22 @@
+
+ RUN  v3.2.7 C:/dev/settleup/frontend
+
+ ✓ src/test/money.test.js > rupeesToPaise > converts typed rupee amounts to integer paise without floating point 1ms
+ ✓ src/test/money.test.js > rupeesToPaise > rejects invalid input 0ms
+ ✓ src/test/money.test.js > formatPaise > uses Indian digit grouping 1ms
+ ✓ src/test/money.test.js > formatPaise > round-trips with the input helper 0ms
+ ✓ src/test/money.test.js > previewEqualSplit > matches the backend rule: remainder paise go to the lowest user ids 1ms
+ ✓ src/test/money.test.js > getErrorMessage > reads FastAPI string details 0ms
+ ✓ src/test/money.test.js > getErrorMessage > flattens Pydantic validation errors 0ms
+ ✓ src/test/money.test.js > getErrorMessage > explains network failures 0ms
+ ✓ src/test/flows.test.jsx > ProtectedRoute > redirects anonymous visitors to the login page 24ms
+ ✓ src/test/flows.test.jsx > LoginPage > shows the server error message when login fails 667ms
+ ✓ src/test/flows.test.jsx > LoginPage > stores the token after a successful login 609ms
+ ✓ src/test/flows.test.jsx > ExpenseForm > sends an equal split as integer paise with all members selected 423ms
+ ✓ src/test/flows.test.jsx > ExpenseForm > blocks a custom split whose shares do not add up 683ms
+
+ Test Files  2 passed (2)
+      Tests  13 passed (13)
+   Start at  17:29:20
+   Duration  5.01s (transform 141ms, setup 328ms, collect 774ms, tests 2.41s, environment 1.48s, prepare 589ms)
+
