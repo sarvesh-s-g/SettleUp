@@ -1,0 +1,15 @@
+# SettleUp backend dependencies (pinned, verified on Python 3.14 and 3.11+)
+fastapi==0.165.0
+uvicorn==0.54.0
+pydantic==2.14.4
+pydantic-settings==2.16.3
+email-validator==2.4.0
+SQLAlchemy==2.1.9
+psycopg[binary]==3.3.9
+alembic==1.20.1
+PyJWT==2.15.1
+bcrypt==5.0.0
+
+# testing
+pytest==9.2.0
+httpx2==2.16.2
