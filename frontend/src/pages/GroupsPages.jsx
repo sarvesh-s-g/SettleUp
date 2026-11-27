@@ -1,26 +1,43 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { groupsApi } from '../api/api'
+import { groupsApi, invitesApi } from '../api/api'
 import { balanceLabel, formatDate, getErrorMessage } from '../utils/format'
+import PendingInvitesCard from '../components/PendingInvitesCard'
 import {
-  BalanceAmount, Button, ButtonLink, Card, EmptyState, ErrorAlert, Field, LoadingState, PageHeader,
+  BalanceAmount, Button, ButtonLink, Card, EmptyState, ErrorAlert, Field, LoadingState, PageHeader, SuccessAlert,
 } from '../components/ui'
 
 export function GroupsPage() {
   const [groups, setGroups] = useState(null)
+  const [invites, setInvites] = useState([])
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
 
   const load = useCallback(() => {
     setError('')
-    groupsApi.list().then(setGroups).catch((err) => setError(getErrorMessage(err)))
+    Promise.all([groupsApi.list(), invitesApi.list()])
+      .then(([groupList, inviteList]) => {
+        setGroups(groupList)
+        setInvites(inviteList)
+      })
+      .catch((err) => setError(getErrorMessage(err)))
   }, [])
   useEffect(load, [load])
+
+  async function handleInviteResponded({ invite, accepted }) {
+    setNotice(accepted ? `You joined "${invite.group_name}".` : `Declined invitation to "${invite.group_name}".`)
+    await load()
+  }
 
   return (
     <>
       <PageHeader title="Your groups" subtitle="Flats, trips, teams — anywhere you share costs."
         actions={<ButtonLink to="/groups/new">+ New group</ButtonLink>} />
-      <ErrorAlert message={error} onRetry={load} />
+      <div className="mb-4 space-y-3">
+        <SuccessAlert message={notice} />
+        <ErrorAlert message={error} onRetry={load} />
+      </div>
+      <PendingInvitesCard invites={invites} onResponded={handleInviteResponded} />
       {!groups && !error && <LoadingState />}
       {groups && groups.length === 0 && (
         <EmptyState title="No groups yet" description="Create your first group and invite your roommates by their email."
@@ -71,7 +88,7 @@ export function CreateGroupPage() {
 
   return (
     <div className="mx-auto max-w-lg">
-      <PageHeader title="Create a group" subtitle="You'll be the group's admin and can add members next." />
+      <PageHeader title="Create a group" subtitle="You'll be the group's admin and can invite members next." />
       <Card className="p-6">
         <form onSubmit={handleSubmit} className="space-y-4">
           <Field label="Group name" htmlFor="groupName" hint='For example "Room 204" or "Goa Trip"'>

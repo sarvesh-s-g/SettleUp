@@ -15,13 +15,27 @@ class GroupCreate(BaseModel):
         return value
 
 
-class AddMemberRequest(BaseModel):
+class InviteMemberRequest(BaseModel):
     email: EmailStr = Field(examples=["rahul@example.com"])
 
     @field_validator("email")
     @classmethod
     def lowercase_email(cls, value: str) -> str:
         return value.lower()
+
+
+class GroupInviteOut(BaseModel):
+    id: int
+    group_id: int
+    group_name: str
+    invited_user_id: int
+    invited_user_name: str
+    invited_user_email: EmailStr
+    invited_by_id: int
+    invited_by_name: str
+    status: str
+    created_at: datetime
+    responded_at: datetime | None = None
 
 
 class MemberOut(BaseModel):

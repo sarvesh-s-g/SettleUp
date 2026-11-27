@@ -14,9 +14,18 @@ export const groupsApi = {
   list: () => data(client.get('/groups')),
   create: (body) => data(client.post('/groups', body)),
   get: (groupId) => data(client.get(`/groups/${groupId}`)),
+  remove: (groupId) => data(client.delete(`/groups/${groupId}`)),
   members: (groupId) => data(client.get(`/groups/${groupId}/members`)),
-  addMember: (groupId, email) => data(client.post(`/groups/${groupId}/members`, { email })),
+  invites: (groupId) => data(client.get(`/groups/${groupId}/invites`)),
+  inviteMember: (groupId, email) => data(client.post(`/groups/${groupId}/invites`, { email })),
+  cancelInvite: (groupId, inviteId) => data(client.delete(`/groups/${groupId}/invites/${inviteId}`)),
   removeMember: (groupId, userId) => data(client.delete(`/groups/${groupId}/members/${userId}`)),
+}
+
+export const invitesApi = {
+  list: () => data(client.get('/invites')),
+  accept: (inviteId) => data(client.post(`/invites/${inviteId}/accept`)),
+  decline: (inviteId) => data(client.post(`/invites/${inviteId}/decline`)),
 }
 
 export const expensesApi = {
@@ -35,5 +44,5 @@ export const settlementsApi = {
 }
 
 export const dashboardApi = {
-  get: () => data(client.get('/dashboard')),
+  get: (params) => data(client.get('/dashboard', { params })),
 }

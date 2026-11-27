@@ -28,7 +28,7 @@ from sqlalchemy import text  # noqa: E402
 from app.database import engine  # noqa: E402
 from app.main import app  # noqa: E402
 
-TABLES = "expense_splits, expenses, settlements, group_members, groups, users"
+TABLES = "expense_splits, expenses, settlements, group_invites, group_members, groups, users"
 
 
 @pytest.fixture(scope="session")
@@ -68,20 +68,29 @@ def make_user(client):
     return _make
 
 
+def invite_and_accept(client, group_id, admin_headers, user) -> None:
+    """Invite a user to a group and have them accept the invitation."""
+    invited = client.post(
+        f"/api/v1/groups/{group_id}/invites",
+        json={"email": user["email"]},
+        headers=admin_headers,
+    )
+    assert invited.status_code == 201, invited.text
+    invite_id = invited.json()["id"]
+    accepted = client.post(f"/api/v1/invites/{invite_id}/accept", headers=user["headers"])
+    assert accepted.status_code == 200, accepted.text
+
+
 @pytest.fixture
 def roommates(client, make_user):
     """The four roommates of 'Room 204' used throughout the docs.
-    Sarvesh creates the group (admin) and adds the other three."""
+    Sarvesh creates the group (admin), invites the other three, and they accept."""
     users = {name: make_user(name) for name in ("Sarvesh", "Rahul", "Kiran", "Aman")}
     response = client.post("/api/v1/groups", json={"name": "Room 204"}, headers=users["Sarvesh"]["headers"])
     assert response.status_code == 201, response.text
     group_id = response.json()["id"]
     for name in ("Rahul", "Kiran", "Aman"):
-        added = client.post(
-            f"/api/v1/groups/{group_id}/members", json={"email": users[name]["email"]},
-            headers=users["Sarvesh"]["headers"],
-        )
-        assert added.status_code == 201, added.text
+        invite_and_accept(client, group_id, users["Sarvesh"]["headers"], users[name])
     return {"group_id": group_id, **users}
 
 

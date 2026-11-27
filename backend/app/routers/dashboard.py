@@ -1,6 +1,6 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
@@ -30,9 +30,32 @@ def _last_months(today: date, count: int) -> list[str]:
     return list(reversed(months))
 
 
+def _months_in_range(start: date, end: date) -> list[str]:
+    months = []
+    year, month = start.year, start.month
+    while (year, month) <= (end.year, end.month):
+        months.append(f"{year:04d}-{month:02d}")
+        month += 1
+        if month == 13:
+            year, month = year + 1, 1
+    return months
+
+
 @router.get("", response_model=DashboardResponse)
-def get_dashboard(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+def get_dashboard(
+    start_date: date | None = None,
+    end_date: date | None = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     """Summary across every group the logged-in user belongs to."""
+    today = date.today()
+    default_months = _last_months(today, MONTHS_IN_SUMMARY)
+    analysis_start = start_date or date.fromisoformat(default_months[0] + "-01")
+    analysis_end = end_date or today
+    if analysis_start > analysis_end:
+        raise HTTPException(status_code=422, detail="start_date must be on or before end_date")
+
     me = current_user.id
     my_group_ids = select(GroupMember.group_id).where(GroupMember.user_id == me)
     groups = db.execute(
@@ -90,24 +113,26 @@ def get_dashboard(db: Session = Depends(get_db), current_user: User = Depends(ge
 
     category_rows = db.execute(
         select(Expense.category, func.sum(Expense.amount_paise).label("total"))
-        .where(in_my_groups)
+        .where(in_my_groups, Expense.expense_date >= analysis_start, Expense.expense_date <= analysis_end)
         .group_by(Expense.category)
         .order_by(func.sum(Expense.amount_paise).desc())
     ).all()
 
-    # Monthly totals for the last 6 months.
-    months = _last_months(date.today(), MONTHS_IN_SUMMARY)
-    first_day = date.fromisoformat(months[0] + "-01")
+    # Monthly totals are grouped into every calendar month intersecting the selected range.
+    months = _months_in_range(analysis_start, analysis_end)
     month_key = func.to_char(Expense.expense_date, "YYYY-MM")
     month_totals = dict(db.execute(
         select(month_key, func.sum(Expense.amount_paise))
-        .where(in_my_groups, Expense.expense_date >= first_day)
+        .where(in_my_groups, Expense.expense_date >= analysis_start, Expense.expense_date <= analysis_end)
         .group_by(month_key)
     ).all())
     month_shares = dict(db.execute(
         select(month_key, func.sum(ExpenseSplit.share_amount_paise))
         .join(ExpenseSplit, ExpenseSplit.expense_id == Expense.id)
-        .where(in_my_groups, ExpenseSplit.user_id == me, Expense.expense_date >= first_day)
+        .where(
+            in_my_groups, ExpenseSplit.user_id == me,
+            Expense.expense_date >= analysis_start, Expense.expense_date <= analysis_end,
+        )
         .group_by(month_key)
     ).all())
 

@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 from app.config import settings
-from app.routers import auth, dashboard, expenses, groups, settlements
+from app.routers import auth, dashboard, expenses, groups, invites, settlements
 
 logger = logging.getLogger("settleup")
 
@@ -69,6 +69,7 @@ def unhandled_error_handler(request: Request, exc: Exception):
 
 app.include_router(auth.router, prefix=API_PREFIX)
 app.include_router(groups.router, prefix=API_PREFIX)
+app.include_router(invites.router, prefix=API_PREFIX)
 app.include_router(expenses.router, prefix=API_PREFIX)
 app.include_router(settlements.router, prefix=API_PREFIX)
 app.include_router(dashboard.router, prefix=API_PREFIX)

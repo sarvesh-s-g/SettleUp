@@ -101,7 +101,30 @@ CREATE TABLE expense_splits (
 
 CREATE INDEX ix_expense_splits_user_id ON expense_splits (user_id);
 
-INSERT INTO alembic_version (version_num) VALUES ('1eafb6ed5e01') RETURNING alembic_version.version_num;
+UPDATE alembic_version SET version_num='0002_add_group_invites' WHERE version_num='1eafb6ed5e01';
+
+-- Running upgrade 1eafb6ed5e01 -> 0002_add_group_invites
+
+CREATE TABLE group_invites (
+    id SERIAL NOT NULL, 
+    group_id INTEGER NOT NULL, 
+    invited_user_id INTEGER NOT NULL, 
+    invited_by INTEGER NOT NULL, 
+    status VARCHAR(20) NOT NULL, 
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now() NOT NULL, 
+    responded_at TIMESTAMP WITH TIME ZONE, 
+    PRIMARY KEY (id), 
+    CONSTRAINT ck_group_invites_status CHECK (status IN ('pending', 'accepted', 'declined')), 
+    FOREIGN KEY(group_id) REFERENCES groups (id) ON DELETE CASCADE, 
+    FOREIGN KEY(invited_by) REFERENCES users (id) ON DELETE RESTRICT, 
+    FOREIGN KEY(invited_user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_group_invites_invited_user_status ON group_invites (invited_user_id, status);
+
+CREATE UNIQUE INDEX uq_group_invites_pending ON group_invites (group_id, invited_user_id) WHERE status = 'pending';
+
+INSERT INTO alembic_version (version_num) VALUES ('0002_add_group_invites') RETURNING alembic_version.version_num;
 
 COMMIT;
 

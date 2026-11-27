@@ -1,8 +1,9 @@
 @import "tailwindcss";
 
-/* Design tokens: one teal brand colour, slate neutrals, green/rose for balances. */
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Segoe UI", "Helvetica Neue", Roboto, sans-serif;
+  --font-display: Georgia, "Times New Roman", serif;
+  --font-mono: Consolas, "Courier New", monospace;
   --color-brand-50: #f0fdfa;
   --color-brand-100: #ccfbf1;
   --color-brand-500: #14b8a6;
@@ -17,7 +18,13 @@
     -webkit-font-smoothing: antialiased;
   }
   body {
-    @apply bg-slate-50 text-slate-900;
+    @apply bg-slate-50 font-sans text-slate-900;
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
   }
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-brand-600;
@@ -37,6 +44,7 @@
     @apply rounded-xl border border-slate-200 bg-white shadow-sm;
   }
   .amount {
+    font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
   }
 }

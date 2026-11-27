@@ -7,12 +7,23 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../api/api', () => ({
   authApi: { login: vi.fn(), register: vi.fn(), me: vi.fn() },
+  groupsApi: {
+    list: vi.fn(),
+    remove: vi.fn(),
+    invites: vi.fn(),
+    inviteMember: vi.fn(),
+    cancelInvite: vi.fn(),
+    removeMember: vi.fn(),
+  },
+  invitesApi: { list: vi.fn(), accept: vi.fn(), decline: vi.fn() },
 }))
 
-import { authApi } from '../api/api'
+import { authApi, groupsApi, invitesApi } from '../api/api'
 import { AuthProvider } from '../context/AuthContext'
 import ProtectedRoute from '../components/ProtectedRoute'
 import { LoginPage } from '../pages/AuthPages'
+import { GroupsPage } from '../pages/GroupsPages'
+import MembersPage from '../pages/MembersPage'
 import ExpenseForm from '../components/ExpenseForm'
 
 function renderWithAuth(ui, { route = '/' } = {}) {
@@ -115,5 +126,96 @@ describe('ExpenseForm', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Shares must add up to ₹1,000.00')
     expect(onSubmit).not.toHaveBeenCalled()
+  })
+})
+
+describe('GroupsPage invitations', () => {
+  it('shows pending invitations and accepts one on click', async () => {
+    groupsApi.list.mockResolvedValue([])
+    invitesApi.list
+      .mockResolvedValueOnce([
+        {
+          id: 7,
+          group_id: 2,
+          group_name: 'Goa Trip',
+          invited_user_id: 1,
+          invited_user_name: 'Rahul',
+          invited_user_email: 'rahul@example.com',
+          invited_by_id: 2,
+          invited_by_name: 'Sarvesh',
+          status: 'pending',
+          created_at: '2026-11-20T00:00:00Z',
+          responded_at: null,
+        },
+      ])
+      .mockResolvedValueOnce([])
+    invitesApi.accept.mockResolvedValue({
+      id: 2,
+      name: 'Goa Trip',
+      created_by: 2,
+      created_at: '2026-11-20T00:00:00Z',
+      member_count: 2,
+      my_role: 'member',
+      my_balance_paise: 0,
+    })
+
+    render(
+      <MemoryRouter>
+        <GroupsPage />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByText('Pending group invitations (1)')).toBeInTheDocument()
+    expect(screen.getByText('Goa Trip')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Accept' }))
+
+    await waitFor(() => expect(invitesApi.accept).toHaveBeenCalledWith(7))
+    expect(await screen.findByRole('status')).toHaveTextContent('You joined "Goa Trip".')
+  })
+})
+
+describe('MembersPage delete group', () => {
+  it('shows error when backend blocks deleting an unsettled group', async () => {
+    authApi.me.mockResolvedValue({ id: 1, name: 'Sarvesh', email: 'sarvesh@example.com' })
+    localStorage.setItem('settleup_token', 'jwt-token')
+    groupsApi.invites.mockResolvedValue([])
+    groupsApi.remove.mockRejectedValue({
+      response: {
+        status: 400,
+        data: { detail: 'Cannot delete group while members have unsettled balances. Settle up first.' },
+      },
+    })
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    const group = {
+      id: 1,
+      name: 'Room 204',
+      my_role: 'admin',
+      members: [
+        { user_id: 1, name: 'Sarvesh', email: 'sarvesh@example.com', role: 'admin', joined_at: '2026-11-01T00:00:00Z' },
+      ],
+    }
+
+    const { Outlet } = await import('react-router-dom')
+    renderWithAuth(
+      <Routes>
+        <Route element={<ProtectedRoute />}>
+          <Route element={<Outlet context={{ group, reloadGroup: vi.fn() }} />}>
+            <Route path="/groups/1/members" element={<MembersPage />} />
+          </Route>
+        </Route>
+      </Routes>,
+      { route: '/groups/1/members' },
+    )
+
+    const deleteBtn = await screen.findByRole('button', { name: 'Delete group' })
+    await userEvent.click(deleteBtn)
+
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(groupsApi.remove).toHaveBeenCalledWith(1)
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Cannot delete group while members have unsettled balances. Settle up first.',
+    )
+    confirmSpy.mockRestore()
   })
 })

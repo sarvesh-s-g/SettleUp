@@ -1,4 +1,4 @@
-from tests.conftest import add_expense, balances_by_name
+from tests.conftest import add_expense, balances_by_name, invite_and_accept
 
 ALL = ("Sarvesh", "Rahul", "Kiran", "Aman")
 
@@ -164,7 +164,7 @@ def test_multiple_groups_are_isolated(client, roommates, make_user):
     gid = setup_example(client, roommates)
     sarvesh, rahul = roommates["Sarvesh"], roommates["Rahul"]
     trip = client.post("/api/v1/groups", json={"name": "Goa Trip"}, headers=rahul["headers"]).json()["id"]
-    client.post(f"/api/v1/groups/{trip}/members", json={"email": sarvesh["email"]}, headers=rahul["headers"])
+    invite_and_accept(client, trip, rahul["headers"], sarvesh)
     add_expense(client, trip, rahul["headers"], amount_paise=500000, paid_by=rahul["id"], participant_ids=[rahul["id"], sarvesh["id"]])
 
     assert balances_by_name(client, trip, rahul["headers"]) == {"Rahul": 250000, "Sarvesh": -250000}

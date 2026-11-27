@@ -1,12 +1,16 @@
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, UniqueConstraint, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
 
 ROLE_ADMIN = "admin"
 ROLE_MEMBER = "member"
+
+INVITE_PENDING = "pending"
+INVITE_ACCEPTED = "accepted"
+INVITE_DECLINED = "declined"
 
 
 class Group(Base):
@@ -30,6 +34,9 @@ class Group(Base):
     members: Mapped[list["GroupMember"]] = relationship(
         back_populates="group", cascade="all, delete-orphan", passive_deletes=True,
         order_by="GroupMember.joined_at",
+    )
+    invites: Mapped[list["GroupInvite"]] = relationship(
+        back_populates="group", cascade="all, delete-orphan", passive_deletes=True,
     )
     expenses: Mapped[list["Expense"]] = relationship(
         back_populates="group", cascade="all, delete-orphan", passive_deletes=True
@@ -67,3 +74,40 @@ class GroupMember(Base):
 
     group: Mapped["Group"] = relationship(back_populates="members")
     user: Mapped["User"] = relationship(back_populates="memberships")
+
+
+class GroupInvite(Base):
+    """Pending or responded invitation for a user to join a group."""
+
+    __tablename__ = "group_invites"
+    __table_args__ = (
+        CheckConstraint("status IN ('pending', 'accepted', 'declined')", name="ck_group_invites_status"),
+        Index("ix_group_invites_invited_user_status", "invited_user_id", "status"),
+        Index(
+            "uq_group_invites_pending",
+            "group_id",
+            "invited_user_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    group_id: Mapped[int] = mapped_column(
+        ForeignKey("groups.id", ondelete="CASCADE"), nullable=False
+    )
+    invited_user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    invited_by: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default=INVITE_PENDING)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    group: Mapped["Group"] = relationship(back_populates="invites")
+    invited_user: Mapped["User"] = relationship(foreign_keys=[invited_user_id])
+    inviter: Mapped["User"] = relationship(foreign_keys=[invited_by])

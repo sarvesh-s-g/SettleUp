@@ -4,6 +4,11 @@ __pycache__/
 .venv/
 venv/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
 
 # Secrets - only the .env.example files are committed
 .env
@@ -14,6 +19,15 @@ venv/
 node_modules/
 dist/
 *.local
+.vite/
+playwright-report/
+test-results/
+*.log
+
+# Reference exports and local test logs (keep README.md and source files)
+docs/*.pdf
+docs/*.md
+docs/test-results/
 
 # Editors / OS
 .vscode/*

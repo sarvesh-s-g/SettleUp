@@ -1,25 +1,47 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { dashboardApi } from '../api/api'
+import { dashboardApi, invitesApi } from '../api/api'
 import { useAuth } from '../context/AuthContext'
-import { CATEGORY_COLORS, categoryLabel, formatDate, formatMonth, getErrorMessage } from '../utils/format'
+import { CATEGORY_COLORS, categoryLabel, formatDate, formatMonth, getErrorMessage, todayISO } from '../utils/format'
 import { formatPaise } from '../utils/money'
+import PendingInvitesCard from '../components/PendingInvitesCard'
 import {
   BalanceAmount, ButtonLink, Card, CategoryBadge, EmptyState, ErrorAlert, LoadingState, PageHeader, StatCard,
 } from '../components/ui'
 
 const rupeeTick = (paise) => `₹${Math.round(paise / 100).toLocaleString('en-IN')}`
+const ANALYSIS_RANGES = [
+  { months: 1, label: 'This month' },
+  { months: 3, label: 'Last 3 months' },
+  { months: 6, label: 'Last 6 months' },
+  { months: 12, label: 'Last 12 months' },
+]
+
+function getAnalysisDates(months) {
+  const now = new Date()
+  const start = new Date(now.getFullYear(), now.getMonth() - months + 1, 1)
+  const startDate = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-01`
+  return { start_date: startDate, end_date: todayISO() }
+}
 
 export default function DashboardPage() {
   const { user } = useAuth()
   const [data, setData] = useState(null)
+  const [invites, setInvites] = useState([])
   const [error, setError] = useState('')
+  const [rangeMonths, setRangeMonths] = useState(6)
+  const { start_date: startDate, end_date: endDate } = getAnalysisDates(rangeMonths)
 
   const load = useCallback(() => {
     setError('')
-    dashboardApi.get().then(setData).catch((err) => setError(getErrorMessage(err)))
-  }, [])
+    Promise.all([dashboardApi.get({ start_date: startDate, end_date: endDate }), invitesApi.list()])
+      .then(([dashboard, inviteList]) => {
+        setData(dashboard)
+        setInvites(inviteList)
+      })
+      .catch((err) => setError(getErrorMessage(err)))
+  }, [startDate, endDate])
   useEffect(load, [load])
 
   if (error) return <ErrorAlert message={error} onRetry={load} />
@@ -32,9 +54,10 @@ export default function DashboardPage() {
     return (
       <>
         <PageHeader title={`Hi ${firstName} 👋`} subtitle="Let's set up your first group." />
+        <PendingInvitesCard invites={invites} onResponded={load} />
         <EmptyState
           title="You're not in any groups yet"
-          description="Create a group for your flat, trip or team, then add the people you share expenses with."
+          description="Create a group for your flat, trip or team, then invite the people you share expenses with."
           action={<ButtonLink to="/groups/new">Create a group</ButtonLink>}
         />
       </>
@@ -50,6 +73,7 @@ export default function DashboardPage() {
         subtitle="Here's where things stand across all your groups."
         actions={<ButtonLink to="/groups">View groups</ButtonLink>}
       />
+      <PendingInvitesCard invites={invites} onResponded={load} />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Total group spending" value={formatPaise(data.total_group_spending_paise)} hint="All expenses in your groups" />
@@ -63,53 +87,76 @@ export default function DashboardPage() {
         <StatCard label="Groups" value={data.group_count} hint="Groups you belong to" />
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
-        <Card className="p-5 lg:col-span-2">
-          <h2 className="text-base font-semibold">Monthly spending</h2>
-          <p className="text-xs text-slate-500">Last 6 months — group total vs. your share</p>
-          <div className="mt-4 h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={monthly} margin={{ left: 8, right: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={12} />
-                <YAxis tickFormatter={rupeeTick} tickLine={false} axisLine={false} fontSize={12} width={70} />
-                <Tooltip formatter={(v) => formatPaise(v)} />
-                <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-                <Bar isAnimationActive={false} dataKey="total_paise" name="Group total" fill="#99f6e4" radius={[4, 4, 0, 0]} />
-                <Bar isAnimationActive={false} dataKey="my_share_paise" name="Your share" fill="#0f766e" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+      <section className="mt-6">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold">Spending analysis</h2>
+            <p className="text-xs text-slate-500">
+              {formatDate(startDate)} – {formatDate(endDate)} · Dashboard totals cover all time
+            </p>
           </div>
-        </Card>
+          <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+            Time range
+            <select
+              aria-label="Analysis time range"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+              value={rangeMonths}
+              onChange={(event) => setRangeMonths(Number(event.target.value))}
+            >
+              {ANALYSIS_RANGES.map(({ months, label }) => (
+                <option key={months} value={months}>{label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <div className="grid gap-6 lg:grid-cols-3">
+          <Card className="p-5 lg:col-span-2">
+            <h2 className="text-base font-semibold">Monthly spending</h2>
+            <p className="text-xs text-slate-500">Group total vs. your share</p>
+            <div className="mt-4 h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthly} margin={{ left: 8, right: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={12} />
+                  <YAxis tickFormatter={rupeeTick} tickLine={false} axisLine={false} fontSize={12} width={70} />
+                  <Tooltip formatter={(v) => formatPaise(v)} />
+                  <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                  <Bar isAnimationActive={false} dataKey="total_paise" name="Group total" fill="#99f6e4" radius={[4, 4, 0, 0]} />
+                  <Bar isAnimationActive={false} dataKey="my_share_paise" name="Your share" fill="#0f766e" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </Card>
 
-        <Card className="p-5">
-          <h2 className="text-base font-semibold">Spending by category</h2>
-          {data.category_breakdown.length === 0 ? (
-            <p className="mt-6 text-sm text-slate-500">No expenses yet.</p>
-          ) : (
-            <>
-              <div className="h-44">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie isAnimationActive={false} data={data.category_breakdown} dataKey="total_paise" nameKey="category" innerRadius={45} outerRadius={75} paddingAngle={2}>
-                      {data.category_breakdown.map((c) => <Cell key={c.category} fill={CATEGORY_COLORS[c.category]} />)}
-                    </Pie>
-                    <Tooltip formatter={(v, name) => [formatPaise(v), categoryLabel(name)]} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <ul className="mt-2 space-y-1.5 text-sm">
-                {data.category_breakdown.map((c) => (
-                  <li key={c.category} className="flex items-center justify-between">
-                    <CategoryBadge category={c.category} />
-                    <span className="amount text-slate-700">{formatPaise(c.total_paise)}</span>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </Card>
-      </div>
+          <Card className="p-5">
+            <h2 className="text-base font-semibold">Spending by category</h2>
+            {data.category_breakdown.length === 0 ? (
+              <p className="mt-6 text-sm text-slate-500">No expenses yet.</p>
+            ) : (
+              <>
+                <div className="h-44">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie isAnimationActive={false} data={data.category_breakdown} dataKey="total_paise" nameKey="category" innerRadius={45} outerRadius={75} paddingAngle={2}>
+                        {data.category_breakdown.map((c) => <Cell key={c.category} fill={CATEGORY_COLORS[c.category]} />)}
+                      </Pie>
+                      <Tooltip formatter={(v, name) => [formatPaise(v), categoryLabel(name)]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <ul className="mt-2 space-y-1.5 text-sm">
+                  {data.category_breakdown.map((c) => (
+                    <li key={c.category} className="flex items-center justify-between">
+                      <CategoryBadge category={c.category} />
+                      <span className="amount text-slate-700">{formatPaise(c.total_paise)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </Card>
+        </div>
+      </section>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
