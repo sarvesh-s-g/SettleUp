@@ -7,11 +7,11 @@ from app.database import get_db
 from app.dependencies.auth import (
     get_current_user, get_membership, require_group_admin, require_group_member,
 )
-from app.models import Expense, Group, GroupInvite, GroupMember, User
+from app.models import Expense, ExpenseSplit, Group, GroupInvite, GroupMember, User
 from app.models.group import INVITE_PENDING, ROLE_ADMIN, ROLE_MEMBER
 from app.routers.invites import query_invites_out
 from app.schemas.group import GroupCreate, GroupDetail, GroupInviteOut, GroupSummary, InviteMemberRequest, MemberOut
-from app.services.balance_service import get_net_balances, get_user_net_balance
+from app.services.balance_service import get_net_balances, get_user_net_balance, get_user_total_share
 
 router = APIRouter(prefix="/groups", tags=["Groups"])
 
@@ -51,20 +51,43 @@ def list_my_groups(db: Session = Depends(get_db), current_user: User = Depends(g
         .group_by(GroupMember.group_id)
         .subquery()
     )
+    expense_totals = (
+        select(Expense.group_id, func.sum(Expense.amount_paise).label("total_spending_paise"))
+        .group_by(Expense.group_id)
+        .subquery()
+    )
+    user_share_totals = (
+        select(
+            Expense.group_id,
+            func.sum(ExpenseSplit.share_amount_paise).label("my_share_paise"),
+        )
+        .join(Expense, Expense.id == ExpenseSplit.expense_id)
+        .where(ExpenseSplit.user_id == current_user.id)
+        .group_by(Expense.group_id)
+        .subquery()
+    )
     rows = db.execute(
-        select(Group, GroupMember.role, member_count.c.member_count)
+        select(
+            Group, GroupMember.role, member_count.c.member_count,
+            func.coalesce(expense_totals.c.total_spending_paise, 0),
+            func.coalesce(user_share_totals.c.my_share_paise, 0),
+        )
         .join(GroupMember, GroupMember.group_id == Group.id)
         .join(member_count, member_count.c.group_id == Group.id)
+        .outerjoin(expense_totals, expense_totals.c.group_id == Group.id)
+        .outerjoin(user_share_totals, user_share_totals.c.group_id == Group.id)
         .where(GroupMember.user_id == current_user.id)
         .order_by(Group.created_at.desc(), Group.id.desc())
     ).all()
     return [
         GroupSummary(
             id=group.id, name=group.name, created_by=group.created_by,
-            created_at=group.created_at, member_count=count, my_role=role,
+            created_at=group.created_at, member_count=count, total_spending_paise=int(total),
+            my_share_paise=int(my_share),
+            my_role=role,
             my_balance_paise=get_user_net_balance(db, group.id, current_user.id),
         )
-        for group, role, count in rows
+        for group, role, count, total, my_share in rows
     ]
 
 
@@ -85,7 +108,8 @@ def get_group(
         id=group.id, name=group.name, created_by=group.created_by,
         creator_name=group.creator.name, created_at=group.created_at,
         my_role=membership.role, member_count=len(members),
-        expense_count=expense_count, total_spending_paise=int(total), members=members,
+        expense_count=expense_count, total_spending_paise=int(total),
+        my_share_paise=get_user_total_share(db, group_id, current_user.id), members=members,
     )
 
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Bar, BarChart, CartesianGrid, Cell, LabelList, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { dashboardApi, invitesApi } from '../api/api'
 import { useAuth } from '../context/AuthContext'
 import { CATEGORY_COLORS, categoryLabel, formatDate, formatMonth, getErrorMessage, todayISO } from '../utils/format'
@@ -11,12 +11,28 @@ import {
 } from '../components/ui'
 
 const rupeeTick = (paise) => `₹${Math.round(paise / 100).toLocaleString('en-IN')}`
+const GROUP_CHART_COLORS = ['#0f766e', '#d97706', '#2563eb', '#9333ea', '#dc2626', '#475569', '#059669', '#c2410c']
 const ANALYSIS_RANGES = [
   { months: 1, label: 'This month' },
   { months: 3, label: 'Last 3 months' },
   { months: 6, label: 'Last 6 months' },
   { months: 12, label: 'Last 12 months' },
 ]
+
+const groupShareKey = (groupId) => `group_${groupId}`
+
+function renderMonthlyTotalLabel(groupKey, groupKeys, monthly) {
+  return ({ x, y, width, index }) => {
+    const row = monthly[index]
+    const topGroupKey = [...groupKeys].reverse().find((key) => row?.[key] > 0)
+    if (groupKey !== topGroupKey || !row?.my_share_paise) return null
+    return (
+      <text x={x + width / 2} y={y - 8} fill="#475569" textAnchor="middle" fontSize={10}>
+        {formatPaise(row.my_share_paise)}
+      </text>
+    )
+  }
+}
 
 function getAnalysisDates(months) {
   const now = new Date()
@@ -64,7 +80,19 @@ export default function DashboardPage() {
     )
   }
 
-  const monthly = data.monthly_summary.map((m) => ({ ...m, label: formatMonth(m.month) }))
+  const chartGroups = [...new Map(
+    data.monthly_summary
+      .flatMap((month) => month.group_shares)
+      .map((group) => [group.group_id, group]),
+  ).values()].sort((a, b) => a.group_id - b.group_id)
+  const groupKeys = chartGroups.map((group) => groupShareKey(group.group_id))
+  const monthly = data.monthly_summary.map((month) => ({
+    ...month,
+    ...Object.fromEntries(
+      month.group_shares.map((group) => [groupShareKey(group.group_id), group.my_share_paise]),
+    ),
+    label: formatMonth(month.month),
+  }))
 
   return (
     <>
@@ -76,13 +104,21 @@ export default function DashboardPage() {
       <PendingInvitesCard invites={invites} onResponded={load} />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Total group spending" value={formatPaise(data.total_group_spending_paise)} hint="All expenses in your groups" />
-        <StatCard label="You paid" value={formatPaise(data.my_total_paid_paise)} hint={`Your share: ${formatPaise(data.my_total_share_paise)}`} />
         <StatCard
-          label={net >= 0 ? 'You get back' : 'You owe'}
+          label="Your portion"
+          value={formatPaise(data.my_total_share_paise)}
+          hint="Part assigned to you on group expenses (all time)"
+        />
+        <StatCard
+          label="Bills you paid upfront"
+          value={formatPaise(data.my_total_paid_paise)}
+          hint="Group bills you paid (all time; includes others' shares, not repayments)"
+        />
+        <StatCard
+          label={net > 0 ? 'Others owe you' : net < 0 ? 'You owe others' : 'Balance'}
           value={formatPaise(Math.abs(net))}
           tone={net > 0 ? 'positive' : net < 0 ? 'negative' : 'default'}
-          hint={net === 0 ? 'You are all settled up' : 'Net across all groups'}
+          hint={net === 0 ? 'All groups are settled up' : 'Current amount after recorded repayments'}
         />
         <StatCard label="Groups" value={data.group_count} hint="Groups you belong to" />
       </div>
@@ -92,7 +128,7 @@ export default function DashboardPage() {
           <div>
             <h2 className="text-base font-semibold">Spending analysis</h2>
             <p className="text-xs text-slate-500">
-              {formatDate(startDate)} – {formatDate(endDate)} · Dashboard totals cover all time
+              {formatDate(startDate)} – {formatDate(endDate)} · Charts show your share
             </p>
           </div>
           <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
@@ -111,33 +147,49 @@ export default function DashboardPage() {
         </div>
         <div className="grid gap-6 lg:grid-cols-3">
           <Card className="p-5 lg:col-span-2">
-            <h2 className="text-base font-semibold">Monthly spending</h2>
-            <p className="text-xs text-slate-500">Group total vs. your share</p>
+            <h2 className="text-base font-semibold">Your monthly portion by group</h2>
+            <p className="text-xs text-slate-500">Bar totals show your portion that month; colors identify each group.</p>
             <div className="mt-4 h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={monthly} margin={{ left: 8, right: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                   <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={12} />
                   <YAxis tickFormatter={rupeeTick} tickLine={false} axisLine={false} fontSize={12} width={70} />
-                  <Tooltip formatter={(v) => formatPaise(v)} />
+                  <Tooltip formatter={(value, name) => [formatPaise(value), name]} />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
-                  <Bar isAnimationActive={false} dataKey="total_paise" name="Group total" fill="#99f6e4" radius={[4, 4, 0, 0]} />
-                  <Bar isAnimationActive={false} dataKey="my_share_paise" name="Your share" fill="#0f766e" radius={[4, 4, 0, 0]} />
+                  {chartGroups.map((group, index) => {
+                    const key = groupShareKey(group.group_id)
+                    return (
+                      <Bar
+                        key={group.group_id}
+                        isAnimationActive={false}
+                        dataKey={key}
+                        name={group.group_name}
+                        stackId="monthly-share"
+                        fill={GROUP_CHART_COLORS[index % GROUP_CHART_COLORS.length]}
+                      >
+                        <LabelList
+                          dataKey="my_share_paise"
+                          content={renderMonthlyTotalLabel(key, groupKeys, monthly)}
+                        />
+                      </Bar>
+                    )
+                  })}
                 </BarChart>
               </ResponsiveContainer>
             </div>
           </Card>
 
           <Card className="p-5">
-            <h2 className="text-base font-semibold">Spending by category</h2>
+            <h2 className="text-base font-semibold">Your spending by category</h2>
             {data.category_breakdown.length === 0 ? (
-              <p className="mt-6 text-sm text-slate-500">No expenses yet.</p>
+              <p className="mt-6 text-sm text-slate-500">No expenses involving you in this period.</p>
             ) : (
               <>
                 <div className="h-44">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
-                      <Pie isAnimationActive={false} data={data.category_breakdown} dataKey="total_paise" nameKey="category" innerRadius={45} outerRadius={75} paddingAngle={2}>
+                      <Pie isAnimationActive={false} data={data.category_breakdown} dataKey="my_share_paise" nameKey="category" innerRadius={45} outerRadius={75} paddingAngle={2}>
                         {data.category_breakdown.map((c) => <Cell key={c.category} fill={CATEGORY_COLORS[c.category]} />)}
                       </Pie>
                       <Tooltip formatter={(v, name) => [formatPaise(v), categoryLabel(name)]} />
@@ -148,7 +200,7 @@ export default function DashboardPage() {
                   {data.category_breakdown.map((c) => (
                     <li key={c.category} className="flex items-center justify-between">
                       <CategoryBadge category={c.category} />
-                      <span className="amount text-slate-700">{formatPaise(c.total_paise)}</span>
+                      <span className="amount text-slate-700">{formatPaise(c.my_share_paise)}</span>
                     </li>
                   ))}
                 </ul>
@@ -179,7 +231,7 @@ export default function DashboardPage() {
                     <div className="shrink-0 text-right">
                       <p className="amount text-sm font-semibold">{formatPaise(e.amount_paise)}</p>
                       <p className="amount text-xs text-slate-500">
-                        {e.my_share_paise ? `your share ${formatPaise(e.my_share_paise)}` : 'not involved'}
+                        {e.my_share_paise ? `your portion ${formatPaise(e.my_share_paise)}` : 'not involved'}
                       </p>
                     </div>
                   </Link>

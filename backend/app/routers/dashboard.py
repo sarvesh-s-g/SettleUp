@@ -8,7 +8,8 @@ from app.database import get_db
 from app.dependencies.auth import get_current_user
 from app.models import Expense, ExpenseSplit, Group, GroupMember, User
 from app.schemas.dashboard import (
-    CategoryTotal, DashboardResponse, DashboardSuggestion, GroupBalance, MonthlyTotal, RecentExpense,
+    CategoryTotal, DashboardResponse, DashboardSuggestion, GroupBalance, MonthlyGroupShare,
+    MonthlyTotal, RecentExpense,
 )
 from app.services.balance_service import compute_group_balances
 from app.services.settlement_service import suggest_settlements
@@ -63,7 +64,6 @@ def get_dashboard(
     ).all()
 
     in_my_groups = Expense.group_id.in_(my_group_ids)
-    total_spending = db.scalar(select(func.coalesce(func.sum(Expense.amount_paise), 0)).where(in_my_groups))
     my_paid = db.scalar(
         select(func.coalesce(func.sum(Expense.amount_paise), 0)).where(in_my_groups, Expense.paid_by == me)
     )
@@ -112,41 +112,55 @@ def get_dashboard(
     ]
 
     category_rows = db.execute(
-        select(Expense.category, func.sum(Expense.amount_paise).label("total"))
-        .where(in_my_groups, Expense.expense_date >= analysis_start, Expense.expense_date <= analysis_end)
-        .group_by(Expense.category)
-        .order_by(func.sum(Expense.amount_paise).desc())
-    ).all()
-
-    # Monthly totals are grouped into every calendar month intersecting the selected range.
-    months = _months_in_range(analysis_start, analysis_end)
-    month_key = func.to_char(Expense.expense_date, "YYYY-MM")
-    month_totals = dict(db.execute(
-        select(month_key, func.sum(Expense.amount_paise))
-        .where(in_my_groups, Expense.expense_date >= analysis_start, Expense.expense_date <= analysis_end)
-        .group_by(month_key)
-    ).all())
-    month_shares = dict(db.execute(
-        select(month_key, func.sum(ExpenseSplit.share_amount_paise))
+        select(Expense.category, func.sum(ExpenseSplit.share_amount_paise).label("my_share"))
         .join(ExpenseSplit, ExpenseSplit.expense_id == Expense.id)
         .where(
             in_my_groups, ExpenseSplit.user_id == me,
             Expense.expense_date >= analysis_start, Expense.expense_date <= analysis_end,
         )
-        .group_by(month_key)
-    ).all())
+        .group_by(Expense.category)
+        .order_by(func.sum(ExpenseSplit.share_amount_paise).desc())
+    ).all()
+
+    # Monthly totals are grouped into every calendar month intersecting the selected range.
+    months = _months_in_range(analysis_start, analysis_end)
+    month_key = func.to_char(Expense.expense_date, "YYYY-MM")
+    group_month_rows = db.execute(
+        select(
+            Expense.group_id,
+            Group.name,
+            month_key,
+            func.sum(ExpenseSplit.share_amount_paise),
+        )
+        .join(ExpenseSplit, ExpenseSplit.expense_id == Expense.id)
+        .join(Group, Group.id == Expense.group_id)
+        .where(
+            in_my_groups, ExpenseSplit.user_id == me,
+            Expense.expense_date >= analysis_start, Expense.expense_date <= analysis_end,
+        )
+        .group_by(Expense.group_id, Group.name, month_key)
+        .order_by(Expense.group_id, month_key)
+    ).all()
+    group_shares_by_month: dict[str, list[MonthlyGroupShare]] = {}
+    for group_id, group_name, month, share in group_month_rows:
+        group_shares_by_month.setdefault(month, []).append(
+            MonthlyGroupShare(group_id=group_id, group_name=group_name, my_share_paise=int(share))
+        )
 
     return DashboardResponse(
         group_count=len(groups),
-        total_group_spending_paise=int(total_spending),
         my_total_paid_paise=int(my_paid),
         my_total_share_paise=int(my_share),
         my_net_balance_paise=sum(g.net_balance_paise for g in group_balances),
         group_balances=group_balances,
         recent_expenses=recent,
-        category_breakdown=[CategoryTotal(category=c, total_paise=int(t)) for c, t in category_rows],
+        category_breakdown=[CategoryTotal(category=c, my_share_paise=int(t)) for c, t in category_rows],
         monthly_summary=[
-            MonthlyTotal(month=m, total_paise=int(month_totals.get(m, 0)), my_share_paise=int(month_shares.get(m, 0)))
+            MonthlyTotal(
+                month=m,
+                my_share_paise=sum(share.my_share_paise for share in group_shares_by_month.get(m, [])),
+                group_shares=group_shares_by_month.get(m, []),
+            )
             for m in months
         ],
         suggested_settlements=suggestions,

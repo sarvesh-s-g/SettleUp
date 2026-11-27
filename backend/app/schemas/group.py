@@ -52,6 +52,8 @@ class GroupSummary(BaseModel):
     created_by: int
     created_at: datetime
     member_count: int
+    total_spending_paise: int
+    my_share_paise: int
     my_role: str
     my_balance_paise: int
 
@@ -66,4 +68,5 @@ class GroupDetail(BaseModel):
     member_count: int
     expense_count: int
     total_spending_paise: int
+    my_share_paise: int
     members: list[MemberOut]

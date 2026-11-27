@@ -39,6 +39,16 @@ def _sum_by_user(db: Session, statement) -> dict[int, int]:
     return {user_id: int(total) for user_id, total in db.execute(statement).all()}
 
 
+def get_user_total_share(db: Session, group_id: int, user_id: int) -> int:
+    """Return the user's assigned shares for all expenses in one group."""
+    total = db.scalar(
+        select(func.coalesce(func.sum(ExpenseSplit.share_amount_paise), 0))
+        .join(Expense, Expense.id == ExpenseSplit.expense_id)
+        .where(Expense.group_id == group_id, ExpenseSplit.user_id == user_id)
+    )
+    return int(total)
+
+
 def compute_group_balances(db: Session, group_id: int) -> list[BalanceRow]:
     """Return one BalanceRow per current member (plus any former member who still
     appears in the group's records), sorted by name."""

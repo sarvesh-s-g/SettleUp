@@ -6,10 +6,10 @@ from sqlalchemy.orm import Session, aliased
 
 from app.database import get_db
 from app.dependencies.auth import get_current_user, get_membership
-from app.models import Group, GroupInvite, GroupMember, User
+from app.models import Expense, Group, GroupInvite, GroupMember, User
 from app.models.group import INVITE_ACCEPTED, INVITE_DECLINED, INVITE_PENDING, ROLE_MEMBER
 from app.schemas.group import GroupInviteOut, GroupSummary
-from app.services.balance_service import get_user_net_balance
+from app.services.balance_service import get_user_net_balance, get_user_total_share
 
 router = APIRouter(prefix="/invites", tags=["Invites"])
 
@@ -93,6 +93,11 @@ def accept_invite(
     member_count = db.scalar(
         select(func.count(GroupMember.id)).where(GroupMember.group_id == group.id)
     )
+    total_spending = db.scalar(
+        select(func.coalesce(func.sum(Expense.amount_paise), 0)).where(
+            Expense.group_id == group.id
+        )
+    )
     membership = get_membership(db, group.id, current_user.id)
     return GroupSummary(
         id=group.id,
@@ -100,6 +105,8 @@ def accept_invite(
         created_by=group.created_by,
         created_at=group.created_at,
         member_count=int(member_count or 0),
+        total_spending_paise=int(total_spending or 0),
+        my_share_paise=get_user_total_share(db, group.id, current_user.id),
         my_role=membership.role,
         my_balance_paise=get_user_net_balance(db, group.id, current_user.id),
     )

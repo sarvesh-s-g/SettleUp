@@ -9,7 +9,8 @@ def test_dashboard_for_new_user_is_empty(client, make_user):
     user = make_user("Fresh")
     body = client.get("/api/v1/dashboard", headers=user["headers"]).json()
     assert body["group_count"] == 0
-    assert body["total_group_spending_paise"] == 0
+    assert body["my_total_paid_paise"] == 0
+    assert body["my_total_share_paise"] == 0
     assert body["recent_expenses"] == []
     assert len(body["monthly_summary"]) == 6
 
@@ -22,21 +23,32 @@ def test_dashboard_totals(client, roommates):
     add_expense(client, gid, h, amount_paise=120000, expense_date=today, paid_by=roommates["Sarvesh"]["id"], participant_ids=everyone)
     add_expense(client, gid, h, description="Pizza", category="food", amount_paise=40000, expense_date=today,
                 paid_by=roommates["Rahul"]["id"], participant_ids=[roommates["Rahul"]["id"], roommates["Kiran"]["id"]])
+    add_expense(client, gid, h, description="Dinner", category="food", amount_paise=60000, expense_date=today,
+                paid_by=roommates["Rahul"]["id"], participant_ids=[roommates["Sarvesh"]["id"], roommates["Rahul"]["id"]])
 
     body = client.get("/api/v1/dashboard", headers=h).json()
     assert body["group_count"] == 1
-    assert body["total_group_spending_paise"] == 160000
     assert body["my_total_paid_paise"] == 120000
-    assert body["my_total_share_paise"] == 30000
-    assert body["my_net_balance_paise"] == 90000
-    assert {c["category"]: c["total_paise"] for c in body["category_breakdown"]} == {"groceries": 120000, "food": 40000}
-    assert body["monthly_summary"][-1] == {"month": today[:7], "total_paise": 160000, "my_share_paise": 30000}
+    assert body["my_total_share_paise"] == 60000
+    assert body["my_net_balance_paise"] == 60000
+    assert {c["category"]: c["my_share_paise"] for c in body["category_breakdown"]} == {
+        "groceries": 30000, "food": 30000,
+    }
+    assert body["monthly_summary"][-1] == {
+        "month": today[:7],
+        "my_share_paise": 60000,
+        "group_shares": [{
+            "group_id": gid,
+            "group_name": "Room 204",
+            "my_share_paise": 60000,
+        }],
+    }
     # Pizza: Sarvesh was not a participant, so his share is 0
     pizza = next(e for e in body["recent_expenses"] if e["description"] == "Pizza")
     assert pizza["my_share_paise"] == 0
     # Suggestions only include payments involving the current user
     assert all(roommates["Sarvesh"]["id"] in (s["from_user_id"], s["to_user_id"]) for s in body["suggested_settlements"])
-    assert sum(s["amount_paise"] for s in body["suggested_settlements"]) == 90000
+    assert sum(s["amount_paise"] for s in body["suggested_settlements"]) == 60000
 
 
 def test_dashboard_chart_data_respects_date_range_without_changing_all_time_totals(client, roommates):
@@ -62,9 +74,47 @@ def test_dashboard_chart_data_respects_date_range_without_changing_all_time_tota
 
     assert response.status_code == 200
     body = response.json()
-    assert body["total_group_spending_paise"] == 160000
-    assert body["category_breakdown"] == [{"category": "groceries", "total_paise": 120000}]
-    assert body["monthly_summary"] == [{"month": today.strftime("%Y-%m"), "total_paise": 120000, "my_share_paise": 30000}]
+    assert "total_group_spending_paise" not in body
+    assert body["category_breakdown"] == [{"category": "groceries", "my_share_paise": 30000}]
+    assert body["monthly_summary"] == [{
+        "month": today.strftime("%Y-%m"),
+        "my_share_paise": 30000,
+        "group_shares": [{
+            "group_id": gid,
+            "group_name": "Room 204",
+            "my_share_paise": 30000,
+        }],
+    }]
+
+
+def test_monthly_summary_splits_my_share_by_group(client, roommates):
+    headers = roommates["Sarvesh"]["headers"]
+    first_group_id = roommates["group_id"]
+    today = date.today().isoformat()
+    add_expense(
+        client, first_group_id, headers, amount_paise=120000, expense_date=today,
+        paid_by=roommates["Sarvesh"]["id"],
+        participant_ids=[roommates[name]["id"] for name in ALL],
+    )
+
+    second_group = client.post(
+        "/api/v1/groups", json={"name": "Weekend trip"}, headers=headers,
+    )
+    assert second_group.status_code == 201, second_group.text
+    second_group_id = second_group.json()["id"]
+    add_expense(
+        client, second_group_id, headers, amount_paise=40000, expense_date=today,
+        paid_by=roommates["Sarvesh"]["id"], participant_ids=[roommates["Sarvesh"]["id"]],
+    )
+
+    response = client.get("/api/v1/dashboard", headers=headers)
+    assert response.status_code == 200
+    current_month = response.json()["monthly_summary"][-1]
+    assert current_month["my_share_paise"] == 70000
+    assert current_month["group_shares"] == [
+        {"group_id": first_group_id, "group_name": "Room 204", "my_share_paise": 30000},
+        {"group_id": second_group_id, "group_name": "Weekend trip", "my_share_paise": 40000},
+    ]
 
 
 def test_dashboard_rejects_reversed_date_range(client, roommates):

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { groupsApi, invitesApi } from '../api/api'
-import { balanceLabel, formatDate, getErrorMessage } from '../utils/format'
+import { formatDate, getErrorMessage } from '../utils/format'
+import { formatPaise } from '../utils/money'
 import PendingInvitesCard from '../components/PendingInvitesCard'
 import {
-  BalanceAmount, Button, ButtonLink, Card, EmptyState, ErrorAlert, Field, LoadingState, PageHeader, SuccessAlert,
+  Button, ButtonLink, Card, EmptyState, ErrorAlert, Field, LoadingState, PageHeader, SuccessAlert,
 } from '../components/ui'
 
 export function GroupsPage() {
@@ -54,9 +55,15 @@ export function GroupsPage() {
                 )}
               </div>
               <p className="mt-1 text-xs text-slate-500">{g.member_count} members · since {formatDate(g.created_at)}</p>
-              <div className="mt-5 border-t border-slate-100 pt-4">
-                <p className="text-xs text-slate-500">You {balanceLabel(g.my_balance_paise)}</p>
-                <BalanceAmount paise={g.my_balance_paise} className="text-lg" />
+              <div className="mt-5 grid grid-cols-2 gap-3 border-t border-slate-100 pt-4">
+                <div>
+                  <p className="text-xs text-slate-500">Total group expenses</p>
+                  <p className="amount mt-1 text-sm font-semibold text-slate-900">{formatPaise(g.total_spending_paise)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-slate-500">Your portion</p>
+                  <p className="amount mt-1 text-sm font-semibold text-slate-900">{formatPaise(g.my_share_paise)}</p>
+                </div>
               </div>
             </Link>
           ))}

@@ -17,13 +17,19 @@ class RecentExpense(BaseModel):
 
 class CategoryTotal(BaseModel):
     category: str
-    total_paise: int
+    my_share_paise: int
+
+
+class MonthlyGroupShare(BaseModel):
+    group_id: int
+    group_name: str
+    my_share_paise: int
 
 
 class MonthlyTotal(BaseModel):
     month: str  # "YYYY-MM"
-    total_paise: int
     my_share_paise: int
+    group_shares: list[MonthlyGroupShare]
 
 
 class GroupBalance(BaseModel):
@@ -44,7 +50,6 @@ class DashboardSuggestion(BaseModel):
 
 class DashboardResponse(BaseModel):
     group_count: int
-    total_group_spending_paise: int
     my_total_paid_paise: int
     my_total_share_paise: int
     my_net_balance_paise: int

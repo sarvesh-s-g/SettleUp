@@ -52,10 +52,11 @@ export default function GroupLayout() {
       <div className="mt-3 mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{group.name}</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            {group.member_count} members · {group.expense_count} expenses ·{' '}
-            <span className="amount">{formatPaise(group.total_spending_paise)}</span> total spent
-          </p>
+          <p className="mt-1 text-sm text-slate-500">{group.member_count} members · {group.expense_count} expenses</p>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+            <p>Total group expenses: <span className="amount font-semibold text-slate-700">{formatPaise(group.total_spending_paise)}</span></p>
+            <p>Your portion: <span className="amount font-semibold text-slate-700">{formatPaise(group.my_share_paise)}</span></p>
+          </div>
         </div>
         <ButtonLink to={`/groups/${group.id}/expenses/new`}>+ Add expense</ButtonLink>
       </div>

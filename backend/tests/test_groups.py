@@ -17,13 +17,26 @@ def test_group_name_is_validated(client, make_user):
 
 
 def test_list_groups_shows_only_my_groups(client, roommates, make_user):
+    expense = add_expense(
+        client, roommates["group_id"], roommates["Sarvesh"]["headers"],
+        amount_paise=95000, paid_by=roommates["Sarvesh"]["id"],
+        participant_ids=[roommates["Sarvesh"]["id"], roommates["Rahul"]["id"]],
+    )
+    assert expense.status_code == 201, expense.text
     outsider = make_user("Outsider")
     client.post("/api/v1/groups", json={"name": "Outsider's group"}, headers=outsider["headers"])
 
     mine = client.get("/api/v1/groups", headers=roommates["Rahul"]["headers"]).json()
     assert [g["name"] for g in mine] == ["Room 204"]
     assert mine[0]["member_count"] == 4
+    assert mine[0]["total_spending_paise"] == 95000
+    assert mine[0]["my_share_paise"] == 47500
     assert mine[0]["my_role"] == "member"
+
+    detail = client.get(f"/api/v1/groups/{roommates['group_id']}", headers=roommates["Rahul"]["headers"])
+    assert detail.status_code == 200
+    assert detail.json()["total_spending_paise"] == 95000
+    assert detail.json()["my_share_paise"] == 47500
 
 
 def test_direct_member_addition_is_disabled(client, roommates, make_user):
