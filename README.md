@@ -1,7 +1,6 @@
 # SettleUp
 
-SettleUp is a group expense tracker our team built for a final-year BTech Computer Science
-project. It helps groups keep track of shared expenses and see who owes whom.
+SettleUp is a group expense tracker project. It helps groups keep track of shared expenses and see who owes whom.
 
 ![SettleUp dashboard](docs/screenshots/03_dashboard.png)
 
