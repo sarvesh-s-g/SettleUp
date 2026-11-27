@@ -1,8 +1,9 @@
-# SettleUp
+# [SettleUp](https://settle-up-lac.vercel.app/)
 
 SettleUp is a group expense tracker project. It helps groups keep track of shared expenses and see who owes whom.
 
-![SettleUp dashboard](docs/screenshots/03_dashboard.png)
+[![SettleUp dashboard](docs/screenshots/03_dashboard.png)](https://settle-up-lac.vercel.app/)
+[![SettleUp groups](docs/screenshots/04_groups.png)](https://settle-up-lac.vercel.app/)
 
 ## What it does
 
